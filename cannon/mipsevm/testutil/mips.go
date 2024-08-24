@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"math"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/state"
+	"github.com/ethereum/go-ethereum/core/tracing"
 	"github.com/ethereum/go-ethereum/core/vm"
 	"github.com/stretchr/testify/require"
 
@@ -28,17 +30,21 @@ type MIPSEVM struct {
 	lastStepInput []byte
 }
 
-func NewMIPSEVM(artifacts *Artifacts, addrs *Addresses) *MIPSEVM {
-	env, evmState := NewEVMEnv(artifacts, addrs)
-	return &MIPSEVM{env, evmState, addrs, nil, artifacts, math.MaxUint64, nil}
+func NewMIPSEVM(contracts *ContractMetadata) *MIPSEVM {
+	env, evmState := NewEVMEnv(contracts)
+	return &MIPSEVM{env, evmState, contracts.Addresses, nil, contracts.Artifacts, math.MaxUint64, nil}
 }
 
-func (m *MIPSEVM) SetTracer(tracer vm.EVMLogger) {
+func (m *MIPSEVM) SetTracer(tracer *tracing.Hooks) {
 	m.env.Config.Tracer = tracer
 }
 
 func (m *MIPSEVM) SetLocalOracle(oracle mipsevm.PreimageOracle) {
 	m.localOracle = oracle
+}
+
+func (m *MIPSEVM) SetSourceMapTracer(t *testing.T, version MipsVersion) {
+	m.env.Config.Tracer = SourceMapTracer(t, version, m.artifacts.MIPS, m.artifacts.Oracle, m.addrs)
 }
 
 // Step is a pure function that computes the poststate from the VM state encoded in the StepWitness.
@@ -120,11 +126,13 @@ func EncodePreimageOracleInput(t *testing.T, wit *mipsevm.StepWitness, localCont
 		}
 		preimage := localOracle.GetPreimage(preimage.Keccak256Key(wit.PreimageKey).PreimageKey())
 		precompile := common.BytesToAddress(preimage[:20])
-		callInput := preimage[20:]
+		requiredGas := binary.BigEndian.Uint64(preimage[20:28])
+		callInput := preimage[28:]
 		input, err := oracle.ABI.Pack(
 			"loadPrecompilePreimagePart",
 			new(big.Int).SetUint64(uint64(wit.PreimageOffset)),
 			precompile,
+			requiredGas,
 			callInput,
 		)
 		require.NoError(t, err)
