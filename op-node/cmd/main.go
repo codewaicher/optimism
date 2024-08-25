@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/ethereum-optimism/optimism/op-node/cmd/interop"
 	"os"
 
 	"github.com/urfave/cli/v2"
@@ -62,6 +63,7 @@ func main() {
 			Name:        "networks",
 			Subcommands: networks.Subcommands,
 		},
+		interop.InteropCmd,
 	}
 
 	ctx := opio.WithInterruptBlocker(context.Background())
